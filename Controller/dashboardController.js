@@ -269,8 +269,28 @@ exports.getUserHobbiesList = async (req, res) => {
  */
 exports.enrollNewHobby = async (req, res) => {
     try {
-        const userId = req.userId || req.user?._id || req.user?.uid || req.body?.userId || req.query?.userId
-        const { Hobby } = require('../Models')
+        let userId = req.userId || req.user?._id || req.user?.uid || req.body?.userId || req.query?.userId
+        const { Hobby, User } = require('../Models')
+
+        if (!userId) {
+            const deviceId = req.headers['x-device-id'] || `anon_${Date.now()}`
+            let fallbackUser = await User.findOne({ authProviderId: deviceId })
+            if (!fallbackUser) {
+                const uniqueHash = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
+                fallbackUser = await User.create({
+                    name: 'Learner',
+                    displayName: 'Learner',
+                    email: `device_${uniqueHash}@app.invictus`,
+                    authProvider: 'anonymous',
+                    authProviderId: deviceId,
+                    avatar: '⚡'
+                })
+            }
+            userId = fallbackUser._id
+            req.user = fallbackUser
+            req.userId = fallbackUser._id.toString()
+        }
+
         const { hobbyName, goal, experienceLevel, weeklyPracticeMinutes, targetDate } = req.body
 
         if (!hobbyName || typeof hobbyName !== 'string' || !hobbyName.trim()) {
@@ -317,7 +337,6 @@ exports.enrollNewHobby = async (req, res) => {
         await userHobby.populate('hobbyId', 'name slug capabilities category')
 
         // Update User displayName & avatar if provided during onboarding
-        const { User } = require('../Models')
         const userUpdateData = {}
         if (req.body.displayName) userUpdateData.displayName = String(req.body.displayName).trim()
         if (req.body.avatar) userUpdateData.avatar = String(req.body.avatar).trim()

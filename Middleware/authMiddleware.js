@@ -25,17 +25,29 @@ exports.resolveUserSession = async (req, res, next) => {
         })
 
         if (!user) {
-            const uniqueHash = crypto.createHash('md5').update(deviceId).digest('hex').slice(0, 8)
+            const randomSuffix = crypto.randomBytes(4).toString('hex')
+            const uniqueHash = `${Date.now().toString(36)}_${randomSuffix}`
             user = await User.create({
-                name: `Learner ${uniqueHash}`,
-                displayName: `Learner ${uniqueHash}`,
+                name: `Learner ${randomSuffix}`,
+                displayName: `Learner ${randomSuffix}`,
                 email: `device_${uniqueHash}@app.invictus`,
                 authProvider: 'anonymous',
                 authProviderId: deviceId,
                 avatar: '⚡'
             }).catch(async (e) => {
                 console.error('[AuthMiddleware] Error creating anonymous user:', e.message)
-                return await User.findOne({ authProviderId: deviceId })
+                let fallbackUser = await User.findOne({ authProviderId: deviceId })
+                if (!fallbackUser) {
+                    fallbackUser = await User.create({
+                        name: 'Learner Guest',
+                        displayName: 'Learner Guest',
+                        email: `guest_${Date.now()}_${Math.random().toString(36).slice(2, 7)}@app.invictus`,
+                        authProvider: 'anonymous',
+                        authProviderId: deviceId,
+                        avatar: '⚡'
+                    }).catch(() => null)
+                }
+                return fallbackUser
             })
         }
 
