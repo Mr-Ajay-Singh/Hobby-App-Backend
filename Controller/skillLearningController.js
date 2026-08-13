@@ -588,6 +588,7 @@ async function fetchLearningHistoryContext({ userHobbyId, conversationId }) {
 const DELIVERABLE_AI_FORMS = new Set([
     LEARNING_FORM.TEXT,
     LEARNING_FORM.SVG,
+    LEARNING_FORM.VIDEO,
     LEARNING_FORM.INTERACTIVE_QUIZ,
     LEARNING_FORM.FLASHCARD,
     LEARNING_FORM.MUSICAL_NOTES,
@@ -982,6 +983,21 @@ exports.learnSkill = async (req, res) => {
             }),
             ...taskPromises
         ])
+
+        // Auto-fetch YouTube tutorial video suggestion for active hobby/topic
+        if (!responseLearningContent.video) {
+            try {
+                const { searchYouTubeVideo } = require('../Service/YouTubeService')
+                const searchQuery = `${userHobby?.hobbyId?.name || 'Hobby'} ${skillCtx.hobbySkill?.name || ''}`
+                const videoData = await searchYouTubeVideo(searchQuery)
+                if (videoData) {
+                    responseLearningContent.video = videoData
+                    formsDelivered.push(LEARNING_FORM.VIDEO)
+                }
+            } catch (ytErr) {
+                console.warn('[SkillLearning] YouTube search error:', ytErr.message)
+            }
+        }
 
         const deliveredLearningContent = {
             formsDelivered: Array.from(new Set(formsDelivered)),
