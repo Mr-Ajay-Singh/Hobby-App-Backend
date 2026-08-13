@@ -984,15 +984,31 @@ exports.learnSkill = async (req, res) => {
             ...taskPromises
         ])
 
-        // Auto-fetch YouTube tutorial video suggestion for active hobby/topic
-        if (!responseLearningContent.video) {
+        // Selective YouTube video suggestion: only trigger when AI Coach requests video or user explicitly asks for visual demonstration
+        const userPromptLower = (message || '').toLowerCase()
+        const isExplicitVideoRequest = /\b(video|watch|show me|demonstrate|tutorial)\b/i.test(userPromptLower)
+        const isAiVideoRequested = responseLearningContent.formsToDeliver?.includes(LEARNING_FORM.VIDEO) || isExplicitVideoRequest
+
+        if (isAiVideoRequested && !responseLearningContent.video) {
             try {
+                // Extract previously delivered video IDs from conversation history to prevent duplicates
+                const seenVideoIds = new Set()
+                recentMessages.forEach(msg => {
+                    try {
+                        const parsed = JSON.parse(msg.content)
+                        const vidId = parsed.video?.videoId || parsed.learningContent?.video?.videoId
+                        if (vidId) seenVideoIds.add(vidId)
+                    } catch (_) {}
+                })
+
                 const { searchYouTubeVideo } = require('../Service/YouTubeService')
-                const searchQuery = `${userHobby?.hobbyId?.name || 'Hobby'} ${skillCtx.hobbySkill?.name || ''}`
-                const videoData = await searchYouTubeVideo(searchQuery)
+                const searchQuery = `${userHobby?.hobbyId?.name || 'Hobby'} ${skillCtx.hobbySkill?.name || ''} ${previewSnippet || ''}`.trim()
+                const videoData = await searchYouTubeVideo(searchQuery, seenVideoIds)
                 if (videoData) {
                     responseLearningContent.video = videoData
-                    formsDelivered.push(LEARNING_FORM.VIDEO)
+                    if (!formsDelivered.includes(LEARNING_FORM.VIDEO)) {
+                        formsDelivered.push(LEARNING_FORM.VIDEO)
+                    }
                 }
             } catch (ytErr) {
                 console.warn('[SkillLearning] YouTube search error:', ytErr.message)
