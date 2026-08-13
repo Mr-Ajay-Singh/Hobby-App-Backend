@@ -112,9 +112,10 @@ exports.getLeaderboard = async (req, res) => {
         }
 
         // Dynamically attach requesting user's isCurrentUser flag
+        const currentUserIdStr = userId ? String(userId) : ''
         const formattedItems = baseLeaderboardItems.map(item => ({
             ...item,
-            isCurrentUser: item.userId === userId.toString()
+            isCurrentUser: Boolean(currentUserIdStr && item.userId === currentUserIdStr)
         }))
 
         const podium = formattedItems.slice(0, 3)
