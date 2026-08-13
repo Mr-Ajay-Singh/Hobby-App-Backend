@@ -1,7 +1,7 @@
 module.exports = {
     apps: [
         {
-            name: 'Node Server',
+            name: 'hobby-backend',
             script: 'server.js',
             instances: 1,
             autorestart: true,
