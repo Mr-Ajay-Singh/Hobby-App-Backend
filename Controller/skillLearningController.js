@@ -511,6 +511,61 @@ async function updateUserSkillProgress({ userId, userHobbyId, hobbySkill, userSk
     }
 }
 
+// ─── Helper: Record & Coalesce Practice Sessions ──────────────────────────────
+
+async function recordLearningPracticeSession({
+    userId,
+    userHobbyId,
+    lessonText = '',
+    formsDelivered = [],
+    quizCount = 0,
+    topicTitle = 'AI Learning Session',
+    explicitSeconds = null
+}) {
+    if (!userHobbyId) return null
+
+    let durationSeconds = 0
+    if (typeof explicitSeconds === 'number' && explicitSeconds > 0) {
+        durationSeconds = Math.round(explicitSeconds)
+    } else {
+        const wordCount = (lessonText || '').split(/\s+/).filter(Boolean).length
+        durationSeconds = Math.max(60, Math.round(wordCount * 0.3 + 30))
+
+        if (formsDelivered.includes('svg')) durationSeconds += 60
+        if (formsDelivered.includes('checklist')) durationSeconds += 60
+        if (formsDelivered.includes('musical_notes')) durationSeconds += 90
+        if (formsDelivered.includes('code_snippet')) durationSeconds += 90
+        if (quizCount > 0) durationSeconds += (quizCount * 60)
+    }
+
+    try {
+        const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000)
+        let session = await PracticeSession.findOne({
+            userHobbyId,
+            status: 'completed',
+            createdAt: { $gte: fifteenMinsAgo }
+        }).sort({ createdAt: -1 })
+
+        if (session) {
+            session.durationSeconds = (session.durationSeconds || 0) + durationSeconds
+            await session.save()
+            return session
+        }
+
+        return await PracticeSession.create({
+            userId,
+            userHobbyId,
+            title: topicTitle,
+            durationSeconds,
+            status: 'completed',
+            score: 100
+        })
+    } catch (err) {
+        console.error('[SkillLearning] Error recording PracticeSession:', err.message)
+        return null
+    }
+}
+
 
 // ─── Step 3: Fetch Historical Practice & Chat Context ─────────────────────────
 
@@ -959,6 +1014,14 @@ exports.learnSkill = async (req, res) => {
                 hobbySkill: skillCtx.hobbySkill,
                 userSkill: skillCtx.userSkill,
                 evalData: learningContent.eval || {}
+            }),
+            recordLearningPracticeSession({
+                userId,
+                userHobbyId,
+                lessonText: responseLearningContent.text || '',
+                formsDelivered: deliveredLearningContent.formsDelivered || [],
+                quizCount: Array.isArray(responseLearningContent.quiz) ? responseLearningContent.quiz.length : 0,
+                topicTitle: skillCtx.hobbySkill?.name || 'AI Learning Session'
             })
         ])
 
@@ -1194,6 +1257,15 @@ exports.submitQuizAnswer = async (req, res) => {
             }
         }
 
+        // Record Practice Session (+1 min credit for quiz attempt)
+        await recordLearningPracticeSession({
+            userId,
+            userHobbyId,
+            quizCount: 1,
+            topicTitle: 'Quiz Practice Drill',
+            explicitSeconds: 60
+        }).catch(() => {})
+
         return sendResponse(res, 200, {
             success: true,
             isCorrect,
@@ -1261,6 +1333,14 @@ exports.completeTask = async (req, res) => {
             userSkill.level = newLevel
             await userSkill.save()
         }
+
+        // Record Practice Session (+5 mins credit for completed practice task)
+        await recordLearningPracticeSession({
+            userId,
+            userHobbyId,
+            topicTitle: taskTitle || 'Practice Task Assignment',
+            explicitSeconds: 300
+        }).catch(() => {})
 
         return sendResponse(res, 200, {
             success: true,
