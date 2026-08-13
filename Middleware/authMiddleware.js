@@ -1,17 +1,21 @@
 const { User } = require('../Models')
+const crypto = require('crypto')
 
 /**
  * Middleware: Resolves anonymous device ID or auth token to MongoDB User document.
  * Checks x-device-id header, authorization header, or userId query/body param.
- * If user does not exist in DB, auto-creates a User record.
+ * If user does not exist in DB, auto-creates a unique User record per device.
  */
 exports.resolveUserSession = async (req, res, next) => {
     try {
-        const deviceId = req.headers['x-device-id'] ||
-                         req.headers['x-user-id'] ||
-                         req.body?.userId ||
-                         req.query?.userId ||
-                         'anon_default_device'
+        let deviceId = req.headers['x-device-id'] ||
+                       req.headers['x-user-id'] ||
+                       req.body?.userId ||
+                       req.query?.userId
+
+        if (!deviceId || deviceId === 'anon_default_device') {
+            deviceId = `anon_${crypto.randomBytes(8).toString('hex')}`
+        }
 
         let user = await User.findOne({
             $or: [
@@ -21,11 +25,11 @@ exports.resolveUserSession = async (req, res, next) => {
         })
 
         if (!user) {
-            const shortId = String(deviceId).slice(0, 8)
+            const uniqueHash = crypto.createHash('md5').update(deviceId).digest('hex').slice(0, 8)
             user = await User.create({
-                name: `Learner ${shortId}`,
-                displayName: `Learner ${shortId}`,
-                email: `device_${shortId.toLowerCase()}@app.invictus`,
+                name: `Learner ${uniqueHash}`,
+                displayName: `Learner ${uniqueHash}`,
+                email: `device_${uniqueHash}@app.invictus`,
                 authProvider: 'anonymous',
                 authProviderId: deviceId,
                 avatar: '⚡'
@@ -33,10 +37,6 @@ exports.resolveUserSession = async (req, res, next) => {
                 console.error('[AuthMiddleware] Error creating anonymous user:', e.message)
                 return await User.findOne({ authProviderId: deviceId })
             })
-        }
-
-        if (!user) {
-            user = await User.findOne().sort({ createdAt: 1 })
         }
 
         if (user) {
