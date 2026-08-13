@@ -55,8 +55,21 @@ app.use(dashboardRoute)
 app.use(leaderboardRoute)
 
 
-// Catch-all route for undefined routes
+// ─── Web App Static & SPA Serving ───────────────────────────────────────────
+const path = require('path')
+const fs = require('fs')
+const publicDir = path.join(__dirname, 'public')
+app.use(express.static(publicDir))
+
+// Catch-all route: serves index.html for SPA web routes, or 404 for missing /api/ routes
 app.use('*', (req, res) => {
+    if (req.originalUrl.startsWith('/api/')) {
+        return res.status(404).send(NOT_FOUND_TEMPLATE_2)
+    }
+    const indexFile = path.join(publicDir, 'index.html')
+    if (fs.existsSync(indexFile)) {
+        return res.sendFile(indexFile)
+    }
     res.status(404).send(NOT_FOUND_TEMPLATE_2)
 })
 
