@@ -671,7 +671,7 @@ LESSON QUALITY
 - Beginner: define essential terms and give numbered, concrete steps. Intermediate: focus on execution and common mistakes. Advanced/expert: focus on precision, variations, diagnostics, and nuanced trade-offs; do not repeat basic definitions.
 - The latest learner message is the current topic. Conversation history is only context: do not repeat an earlier concept, example, drill, or foundational landmark (such as C or Middle C) unless the latest message explicitly asks for it or it is essential to answering the current topic. When the learner changes topic, acknowledge the switch by answering the new topic directly.
 - Always include text. Include exactly the plan's selected forms: text plus at most one additional form. Do not invent URLs, asset IDs, external sources, or user progress.
-- A requested form is a preference, not a reason to add irrelevant content. Do not output audio or video; this endpoint has no audio/video delivery path.
+- A requested form is a preference. When teaching practical, physical, visual, or hands-on techniques (or when requested by the learner), include "video" in formsToDeliver so a video tutorial is provided.
 - Include a measurable practiceTask only when the plan calls for one. Include eval only when the learner supplied an actual practice or quiz result.
 - Delivery integrity is mandatory: never say “quiz”, “test”, “knowledge check”, “choose the correct answer”, or tell the learner to answer questions unless formsToDeliver includes interactive_quiz and the quiz array is present and non-empty. When interactive_quiz is selected, include 1-3 complete quiz objects and set formsToDeliver to ["text", "interactive_quiz"]. If it is not selected, finish with a practiceTask or a plain next step instead.
 
@@ -984,10 +984,11 @@ exports.learnSkill = async (req, res) => {
             ...taskPromises
         ])
 
-        // Selective YouTube video suggestion: only trigger when AI Coach requests video or user explicitly asks for visual demonstration
+        // Selective YouTube video suggestion: trigger when requestedForms includes video, AI requests video, or user prompt asks for visual/practical demonstration/tutorial
         const userPromptLower = (message || '').toLowerCase()
-        const isExplicitVideoRequest = /\b(video|watch|show me|demonstrate|tutorial)\b/i.test(userPromptLower)
-        const isAiVideoRequested = responseLearningContent.formsToDeliver?.includes(LEARNING_FORM.VIDEO) || isExplicitVideoRequest
+        const isExplicitVideoRequest = /\b(video|watch|show|demonstrate|tutorial|how to|guide|learn|play|hold|bellows|posture|finger|technique|step|practice|lesson)\b/i.test(userPromptLower)
+        const isRequestedFormVideo = requestedForms.includes(LEARNING_FORM.VIDEO)
+        const isAiVideoRequested = responseLearningContent.formsToDeliver?.includes(LEARNING_FORM.VIDEO) || isExplicitVideoRequest || isRequestedFormVideo
 
         if (isAiVideoRequested && !responseLearningContent.video) {
             try {
@@ -1001,8 +1002,9 @@ exports.learnSkill = async (req, res) => {
                     } catch (_) {}
                 })
 
+                const textSnippet = responseLearningContent.text ? responseLearningContent.text.slice(0, 80) : ''
                 const { searchYouTubeVideo } = require('../Service/YouTubeService')
-                const searchQuery = `${userHobby?.hobbyId?.name || 'Hobby'} ${skillCtx.hobbySkill?.name || ''} ${previewSnippet || ''}`.trim()
+                const searchQuery = `${userHobby?.hobbyId?.name || 'Hobby'} ${skillCtx.hobbySkill?.name || ''} ${message.trim().slice(0, 40)}`.trim()
                 const videoData = await searchYouTubeVideo(searchQuery, seenVideoIds)
                 if (videoData) {
                     responseLearningContent.video = videoData
